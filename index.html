@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🌾 農地 作付け計画ゲーム</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #f5f3ee; padding: 20px; }
+  h1 { font-size: 22px; margin-bottom: 8px; color: #3e2c0f; }
+  #intro { background: #fffdf5; border: 1px solid #d4c98a; border-radius: 6px;
+           padding: 8px 12px; margin-bottom: 10px; font-size: 13px; color: #4a3b1a; }
+  #intro summary { cursor: pointer; font-weight: bold; user-select: none; color: #5a4020; }
+  #intro p { margin-top: 6px; line-height: 1.7; }
+  #intro strong { color: #2e7d32; }
+  .toolbar { display: none; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+  .toolbar.active { display: flex; }
+  button { padding: 6px 14px; font-size: 14px; cursor: pointer; border: 1px solid #aaa;
+           border-radius: 4px; background: #fff; }
+  button:hover:not(:disabled) { filter: brightness(0.93); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: #5d8a3c; color: #fff; border-color: #4a7030; }
+  .btn-success { background: #388e3c; color: #fff; border-color: #2e7d32; }
+  .btn-warn   { background: #8d6e3a; color: #fff; border-color: #7a5c28; }
+  #rand-count { width: 52px; padding: 5px 6px; font-size: 14px; border: 1px solid #aaa; border-radius: 4px; }
+  #status-placing, #status-selecting { font-size: 13px; color: #5a4020; }
+  #warning { color: #c00; font-size: 13px; min-height: 1.4em; margin-bottom: 4px; }
+  canvas { display: block; border: 2px solid #6b5030; background: #fffdf7; }
+  #result-banner { margin-top: 10px; padding: 12px 16px; border-radius: 6px;
+                   font-size: 15px; font-weight: bold; display: none; }
+  #result-banner.correct { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+  #result-banner.wrong   { background: #fff8e1; color: #e65100; border: 1px solid #ffcc80; }
+  #info { margin-top: 14px; width: 804px; max-height: 340px; overflow-y: auto; background: #fffdf7;
+          border: 1px solid #c8b870; border-radius: 4px; padding: 12px; }
+  #info details { margin-bottom: 10px; }
+  #info summary { font-weight: bold; cursor: pointer; user-select: none; font-size: 14px;
+                  padding: 2px 0; color: #3e2c0f; }
+  #info summary:hover { color: #5d8a3c; }
+  .section-content { margin-top: 6px; font-size: 13px; }
+  #info table { border-collapse: collapse; }
+  #info td, #info th { border: 1px solid #ddd; padding: 3px 10px; font-size: 13px; text-align: right; }
+  #info th { background: #f0ead8; text-align: center; }
+  #info td:first-child { text-align: center; }
+  .edge-list { font-family: monospace; font-size: 12px; line-height: 1.7; }
+  .pair-list { line-height: 1.8; }
+  .total-row td { font-weight: bold; background: #f5efdb; }
+  .legend { display: flex; gap: 16px; font-size: 13px; margin-bottom: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-swatch { width: 18px; height: 18px; border: 1px solid #999; border-radius: 3px; }
+  #highscore-bar { display: flex; align-items: center; gap: 10px; background: #fffbe6;
+    border: 1px solid #c8b870; border-radius: 6px; padding: 5px 14px;
+    margin-bottom: 8px; font-size: 13px; color: #5a4020; }
+  #highscore-bar .hs-label { font-weight: bold; }
+  #highscore-bar .hs-value { font-size: 18px; font-weight: bold; color: #2e7d32; min-width: 2em; text-align: center; }
+  #highscore-bar .hs-none { color: #aaa; font-size: 13px; }
+  .new-record { color: #e65100; font-weight: bold; font-size: 13px; animation: blink 0.8s step-end 4; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div style="display:flex; align-items:baseline; gap:16px; margin-bottom:8px;">
+  <h1>🌾 農地 作付け計画ゲーム</h1>
+</div>
+<div id="highscore-bar">
+  <span class="hs-label">🏆 ハイスコア（最適化成功時の最大小屋数）</span>
+  <span class="hs-value" id="hs-value">—</span>
+  <span id="hs-suffix" class="hs-none">か所</span>
+  <span id="hs-newrecord" style="display:none" class="new-record">🎊 新記録！</span>
+</div>
+
+<!-- ゲーム説明 -->
+<details id="intro">
+  <summary>ゲームの説明を見る</summary>
+  <p>
+    あなたは農場経営者です。広大な農地に<strong>管理小屋</strong>を配置すると、
+    各小屋が担当する<strong>農地区画</strong>が決まります（ボロノイ図）。<br>
+    ただし<strong>隣接する区画は同じ水路を共有</strong>しているため、
+    両方を同時に作付けすることができません。<br>
+    今年の<strong>収穫面積（作付け区画の合計面積）を最大化</strong>する計画を立てましょう！<br>
+    <span style="color:#888">※ 農地全体は 8km × 5km = 4,000 ha。管理小屋は最大40か所まで配置できます。</span>
+  </p>
+</details>
+
+<!-- フェーズ1: 農場配置 -->
+<div id="tb-placing" class="toolbar active">
+  <button id="btn-random">ランダム配置</button>
+  <input id="rand-count" type="number" value="10" min="1" max="40">
+  <span style="font-size:14px">か所</span>
+  <button id="btn-reset">リセット</button>
+  <span id="status-placing">管理小屋 0 / 40 か所</span>
+  <button id="btn-finish-placing" class="btn-primary" style="margin-left:16px" disabled>農場の配置を完了 ▶</button>
+</div>
+
+<!-- フェーズ2: 作付け計画 -->
+<div id="tb-selecting" class="toolbar">
+  <button id="btn-back">← 農場配置に戻る</button>
+  <button id="btn-reset-sel">作付けをやり直す</button>
+  <button id="btn-finish-sel" class="btn-success">作付けを確定 ▶</button>
+  <span id="status-selecting">作付け面積: 0.0 ha (0.00%)</span>
+</div>
+
+<!-- フェーズ3: 収穫結果 -->
+<div id="tb-done" class="toolbar">
+  <button id="btn-restart" class="btn-warn">もう一度遊ぶ ↩</button>
+  <span id="result-inline" style="font-size:14px; font-weight:bold; margin-left:10px;"></span>
+</div>
+
+<div id="warning"></div>
+<canvas id="canvas" width="800" height="500"></canvas>
+<div id="result-banner"></div>
+<div id="info"><em style="color:#888;font-size:13px">キャンバスをクリックして管理小屋を配置してください。</em></div>
+
+<script>
+const W = 800, H = 500, MAX_PTS = 40;
+
+// ─── ハイスコア（localStorage永続化） ────────────────────
+const HS_KEY = 'farmgame_highscore';
+let highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+
+function renderHighScore(newRecord) {
+  const val = document.getElementById('hs-value');
+  const suf = document.getElementById('hs-suffix');
+  const nr  = document.getElementById('hs-newrecord');
+  if (highScore === 0) {
+    val.textContent = '—';
+    suf.className = 'hs-none';
+    suf.textContent = 'まだ記録なし';
+  } else {
+    val.textContent = highScore;
+    suf.className = '';
+    suf.textContent = 'か所';
+  }
+  nr.style.display = newRecord ? 'inline' : 'none';
+  if (newRecord) {
+    // アニメーションをリセットして再実行
+    nr.classList.remove('new-record');
+    void nr.offsetWidth;
+    nr.classList.add('new-record');
+  }
+}
+renderHighScore(false);
+
+// 農地・自然テーマのアースカラーパレット（20色）
+const CELL_COLORS = Array.from({length: 20}, (_, i) =>
+  `hsl(${60 + i * 12}, 55%, ${78 + (i % 3) * 4}%)`);
+
+// ─── 状態 ─────────────────────────────────────────────────
+const state = {
+  sites: [],
+  cells: [],
+  voronoiEdges: [],
+  adjacentPairs: [],
+  phase: 'placing',
+  adjMap: new Map(),
+  selectedIds: new Set(),
+  blockedIds: new Set(),
+  optimalIds: new Set(),
+};
+
+// ─── 幾何計算 ─────────────────────────────────────────────
+// 単位変換: 1px = 10m → 1px² = 100m² = 0.01ha
+// 800px × 500px = 8km × 5km = 4,000ha
+const PX_TO_HA = 0.01;
+function ha(px2) { return (px2 * PX_TO_HA).toFixed(1); }
+function pct(px2) { return (px2 / (W * H) * 100).toFixed(2); }
+
+function dist2(a, b) { return (a.x - b.x) ** 2 + (a.y - b.y) ** 2; }
+function r1(v) { return v.toFixed(1); }
+
+function shoelace(poly) {
+  let s = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    s += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(s) / 2;
+}
+
+function clipPoly(poly, nx, ny, d) {
+  if (!poly.length) return [];
+  const EPS = 1e-10;
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const va = nx * a.x + ny * a.y;
+    const vb = nx * b.x + ny * b.y;
+    const aIn = va <= d + EPS;
+    const bIn = vb <= d + EPS;
+    if (aIn) out.push(a);
+    if (aIn !== bIn) {
+      const t = (d - va) / (vb - va);
+      out.push({ x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) });
+    }
+  }
+  return out;
+}
+
+// ─── ボロノイ計算（半平面交差法） ─────────────────────────
+function buildVoronoi(sites) {
+  const cells = sites.map(site => {
+    let poly = [{x:0,y:0},{x:W,y:0},{x:W,y:H},{x:0,y:H}];
+    for (const other of sites) {
+      if (other.id === site.id) continue;
+      const nx = other.x - site.x, ny = other.y - site.y;
+      const d = (other.x*other.x + other.y*other.y - site.x*site.x - site.y*site.y) / 2;
+      poly = clipPoly(poly, nx, ny, d);
+      if (!poly.length) break;
+    }
+    return { siteId: site.id, polygon: poly, area: shoelace(poly) };
+  });
+
+  const EPS_B = 0.5;
+  const edgeMap = new Map();
+
+  function isBoundaryEdge(v1, v2) {
+    return (v1.x <= EPS_B && v2.x <= EPS_B) ||
+           (v1.x >= W-EPS_B && v2.x >= W-EPS_B) ||
+           (v1.y <= EPS_B && v2.y <= EPS_B) ||
+           (v1.y >= H-EPS_B && v2.y >= H-EPS_B);
+  }
+
+  for (const cell of cells) {
+    const si = sites[cell.siteId];
+    const poly = cell.polygon;
+    for (let k = 0; k < poly.length; k++) {
+      const v1 = poly[k], v2 = poly[(k+1) % poly.length];
+      if (isBoundaryEdge(v1, v2)) continue;
+      const mid = { x: (v1.x+v2.x)/2, y: (v1.y+v2.y)/2 };
+      let adjId = -1, minD = Infinity;
+      for (const other of sites) {
+        if (other.id === si.id) continue;
+        const d = dist2(mid, other);
+        if (d < minD) { minD = d; adjId = other.id; }
+      }
+      if (adjId < 0) continue;
+      const lo = Math.min(si.id, adjId), hi = Math.max(si.id, adjId);
+      const key = `${lo}_${hi}`;
+      if (!edgeMap.has(key))
+        edgeMap.set(key, { sites: [lo, hi], segment: [v1, v2] });
+    }
+  }
+
+  state.cells = cells;
+  state.voronoiEdges = [...edgeMap.values()];
+  state.adjacentPairs = state.voronoiEdges
+    .map(e => e.sites)
+    .sort(([a1,b1],[a2,b2]) => a1-a2 || b1-b2);
+}
+
+function rebuild() {
+  if (state.sites.length > 0) buildVoronoi(state.sites);
+  else { state.cells = []; state.voronoiEdges = []; state.adjacentPairs = []; }
+  render();
+  updateInfoPanel();
+}
+
+// ─── 最大重み独立集合（MWIS） ──────────────────────────────
+// ボロノイ隣接グラフは平面グラフ（最大次数≒6）。
+// 面積降順ソート＋枝刈りバックトラッキングで N=40 でも高速に解ける。
+function computeMWIS(cells, adjMap) {
+  const N = cells.length;
+  if (N === 0) return new Set();
+
+  const sorted = [...cells].sort((a, b) => b.area - a.area);
+  const idxOf = new Map(sorted.map((c, i) => [c.siteId, i]));
+  const blockCount = new Int32Array(N);
+  const initAvailable = sorted.reduce((s, c) => s + c.area, 0);
+
+  let bestArea = 0, bestSelected = [];
+  const current = [];
+
+  function bt(idx, curArea, available) {
+    if (curArea + available <= bestArea) return; // 上界による枝刈り
+    if (idx === N) {
+      bestArea = curArea;
+      bestSelected = [...current];
+      return;
+    }
+    const cell = sorted[idx];
+    const isBlocked = blockCount[idx] > 0;
+    const nextAvail = available - (isBlocked ? 0 : cell.area);
+
+    // 分岐1: この区画を作付けする（水路競合がない場合のみ）
+    if (!isBlocked) {
+      const neighbors = adjMap.get(cell.siteId) || new Set();
+      let blockedArea = 0;
+      const incremented = [];
+      for (const adjId of neighbors) {
+        const j = idxOf.get(adjId);
+        if (j !== undefined && j > idx) {
+          if (blockCount[j] === 0) blockedArea += sorted[j].area;
+          blockCount[j]++;
+          incremented.push(j);
+        }
+      }
+      current.push(idx);
+      bt(idx + 1, curArea + cell.area, nextAvail - blockedArea);
+      current.pop();
+      for (const j of incremented) blockCount[j]--;
+    }
+
+    // 分岐2: この区画を作付けしない
+    bt(idx + 1, curArea, nextAvail);
+  }
+
+  bt(0, 0, initAvailable);
+  return new Set(bestSelected.map(i => sorted[i].siteId));
+}
+
+// ─── ヒットテスト ─────────────────────────────────────────
+function hitTest(x, y) {
+  if (!state.sites.length) return null;
+  return state.sites.reduce((best, s) =>
+    dist2({x,y}, s) < dist2({x,y}, best) ? s : best);
+}
+
+// ─── 選択状態管理 ─────────────────────────────────────────
+function recomputeBlocked() {
+  state.blockedIds = new Set();
+  for (const id of state.selectedIds)
+    for (const adjId of (state.adjMap.get(id) || []))
+      if (!state.selectedIds.has(adjId)) state.blockedIds.add(adjId);
+}
+
+function toggleCell(siteId) {
+  if (state.selectedIds.has(siteId)) {
+    state.selectedIds.delete(siteId);
+    recomputeBlocked();
+  } else if (!state.blockedIds.has(siteId)) {
+    state.selectedIds.add(siteId);
+    recomputeBlocked();
+  }
+}
+
+function selectedArea() {
+  return state.cells
+    .filter(c => state.selectedIds.has(c.siteId))
+    .reduce((s, c) => s + c.area, 0);
+}
+
+// ─── フェーズ遷移 ─────────────────────────────────────────
+function enterSelectingPhase() {
+  if (!state.sites.length) return;
+  state.phase = 'selecting';
+  state.selectedIds = new Set();
+  state.blockedIds = new Set();
+  state.optimalIds = new Set();
+
+  state.adjMap = new Map();
+  for (const site of state.sites) state.adjMap.set(site.id, new Set());
+  for (const [a, b] of state.adjacentPairs) {
+    state.adjMap.get(a).add(b);
+    state.adjMap.get(b).add(a);
+  }
+
+  showToolbar('selecting');
+  canvas.style.cursor = 'pointer';
+  updateSelStatus();
+  render();
+  updateInfoPanel();
+}
+
+function enterDonePhase() {
+  state.phase = 'done';
+  state.optimalIds = computeMWIS(state.cells, state.adjMap);
+
+  const optArea = state.cells
+    .filter(c => state.optimalIds.has(c.siteId))
+    .reduce((s, c) => s + c.area, 0);
+  const userArea = selectedArea();
+  const isCorrect = Math.abs(userArea - optArea) < 0.5;
+
+  const banner = document.getElementById('result-banner');
+  const inline = document.getElementById('result-inline');
+
+  // ハイスコア更新
+  let newRecord = false;
+  if (isCorrect && state.sites.length > highScore) {
+    highScore = state.sites.length;
+    localStorage.setItem(HS_KEY, highScore);
+    newRecord = true;
+  }
+  renderHighScore(newRecord);
+
+  if (isCorrect) {
+    const recordMsg = newRecord ? ' 🎊 <strong>新記録！</strong>' : '';
+    banner.className = 'correct';
+    banner.innerHTML = `🌾 素晴らしい！最大収穫面積 <strong>${ha(optArea)} ha</strong> を達成しました！今年は大豊作です！${recordMsg}`;
+    inline.textContent = newRecord ? '🌾 大豊作！新記録達成！' : '🌾 大豊作！最高の作付け計画！';
+    inline.style.color = '#1b5e20';
+  } else {
+    const ratio = (userArea / optArea * 100).toFixed(1);
+    banner.className = 'wrong';
+    banner.innerHTML = `惜しい！あなたの作付け面積: <strong>${ha(userArea)} ha</strong> ／ 最大収穫面積: <strong>${ha(optArea)} ha</strong>（精度 ${ratio}%）。最適な計画（青）を参考にしてください。`;
+    inline.textContent = `惜しい！精度 ${ratio}%`;
+    inline.style.color = '#bf360c';
+  }
+  banner.style.display = 'block';
+
+  showToolbar('done');
+  canvas.style.cursor = 'default';
+  render();
+  updateInfoPanel();
+}
+
+function enterPlacingPhase() {
+  state.phase = 'placing';
+  state.sites = [];
+  state.cells = [];
+  state.voronoiEdges = [];
+  state.adjacentPairs = [];
+  state.selectedIds = new Set();
+  state.blockedIds = new Set();
+  state.optimalIds = new Set();
+  document.getElementById('result-banner').style.display = 'none';
+  document.getElementById('warning').textContent = '';
+  showToolbar('placing');
+  canvas.style.cursor = 'crosshair';
+  updatePlacingStatus();
+  rebuild();
+}
+
+function showToolbar(phase) {
+  ['placing','selecting','done'].forEach(p =>
+    document.getElementById(`tb-${p}`).classList.toggle('active', p === phase));
+}
+
+// ─── 描画 ─────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+function fillPolygon(poly) {
+  ctx.beginPath();
+  ctx.moveTo(poly[0].x, poly[0].y);
+  for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fffdf7';
+  ctx.fillRect(0, 0, W, H);
+
+  for (const cell of state.cells) {
+    if (cell.polygon.length < 3) continue;
+    if (state.phase === 'placing') {
+      ctx.fillStyle = CELL_COLORS[cell.siteId % CELL_COLORS.length];
+    } else if (state.phase === 'selecting') {
+      if (state.selectedIds.has(cell.siteId))
+        ctx.fillStyle = 'rgba(139,195,74,0.65)';  // 作付け予定: 草色
+      else if (state.blockedIds.has(cell.siteId))
+        ctx.fillStyle = '#FFE0B2';                  // 作付け不可: 乾いた土色
+      else
+        ctx.fillStyle = '#FAFAF5';                  // 未作付け: クリーム
+    } else { // done
+      const inUser = state.selectedIds.has(cell.siteId);
+      const inOpt  = state.optimalIds.has(cell.siteId);
+      if (inUser && inOpt)    ctx.fillStyle = '#66BB6A'; // 正解作付け: 緑
+      else if (inUser)        ctx.fillStyle = '#FFF176'; // ユーザーのみ: 黄
+      else if (inOpt)         ctx.fillStyle = '#90CAF9'; // 最適のみ（見逃し）: 青
+      else                    ctx.fillStyle = '#F4F4F0'; // 未選択
+    }
+    fillPolygon(cell.polygon);
+  }
+
+  // 農地区画の境界線
+  ctx.strokeStyle = '#7a6040';
+  ctx.lineWidth = 1;
+  for (const edge of state.voronoiEdges) {
+    const [p1, p2] = edge.segment;
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.stroke();
+  }
+
+  // 農地の外枠
+  ctx.strokeStyle = '#6b5030';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(0, 0, W, H);
+
+  // 管理小屋（母点）
+  for (const site of state.sites) {
+    // 小屋の形（円）
+    ctx.beginPath();
+    ctx.arc(site.x, site.y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#8d5524';
+    ctx.fill();
+    ctx.strokeStyle = '#fffdf7';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // 番号
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(site.id + 1), site.x, site.y);
+  }
+}
+
+// ─── 情報パネル ───────────────────────────────────────────
+function updateInfoPanel() {
+  const info = document.getElementById('info');
+
+  if (state.phase === 'placing') {
+    if (!state.sites.length) {
+      info.innerHTML = '<em style="color:#888;font-size:13px">キャンバスをクリックして管理小屋を配置してください。</em>';
+      return;
+    }
+    const totalArea = W * H;
+    let edgesHtml = state.voronoiEdges.map(e => {
+      const [p1,p2] = e.segment, [s1,s2] = e.sites;
+      return `<div>(${r1(p1.x)}, ${r1(p1.y)}) — (${r1(p2.x)}, ${r1(p2.y)})　[小屋${s1+1}–小屋${s2+1}]</div>`;
+    }).join('') || '<em style="color:#888">なし</em>';
+    const pairsHtml = state.adjacentPairs.length
+      ? state.adjacentPairs.map(([a,b]) => `(小屋${a+1}, 小屋${b+1})`).join('　')
+      : '<em style="color:#888">なし</em>';
+    let areaRows = state.cells.map(c =>
+      `<tr><td>${c.siteId+1}</td><td>${ha(c.area)}</td><td>${pct(c.area)}%</td></tr>`
+    ).join('');
+    const sum = state.cells.reduce((s,c)=>s+c.area,0);
+    areaRows += `<tr class="total-row"><td>合計</td><td>${ha(sum)}</td><td>${pct(sum)}%</td></tr>`;
+    info.innerHTML = `
+<details open>
+  <summary>農地区画の境界線分 — ${state.voronoiEdges.length} 本</summary>
+  <div class="section-content edge-list">${edgesHtml}</div>
+</details>
+<details open>
+  <summary>水路を共有する農地ペア（同時作付け不可） — ${state.adjacentPairs.length} 組</summary>
+  <div class="section-content pair-list">${pairsHtml}</div>
+</details>
+<details open>
+  <summary>各農地区画の面積（農地全体: 8km × 5km = 4,000 ha）</summary>
+  <div class="section-content">
+    <table><thead><tr><th>小屋</th><th>面積 (ha)</th><th>割合</th></tr></thead>
+    <tbody>${areaRows}</tbody></table>
+  </div>
+</details>`;
+
+  } else if (state.phase === 'selecting') {
+    const uArea = selectedArea();
+    const totalArea = W * H;
+    let rows = state.cells.map(c => {
+      const id = c.siteId;
+      const st = state.selectedIds.has(id) ? '🌱 作付け予定'
+               : state.blockedIds.has(id)  ? '🚫 作付け不可'
+               : '○ 未作付け';
+      const bg = state.selectedIds.has(id) ? 'background:#f1f8e9'
+               : state.blockedIds.has(id)  ? 'background:#fff3e0' : '';
+      return `<tr style="${bg}"><td>${id+1}</td><td>${ha(c.area)}</td><td>${pct(c.area)}%</td><td>${st}</td></tr>`;
+    }).join('');
+    rows += `<tr class="total-row"><td colspan="2">作付け合計</td><td>${pct(uArea)}%</td><td>${ha(uArea)} ha</td></tr>`;
+    info.innerHTML = `
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:rgba(139,195,74,0.65)"></div>作付け予定</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#FFE0B2"></div>作付け不可（水路競合）</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#FAFAF5; border-color:#bbb"></div>未作付け（選択可）</div>
+</div>
+<details open>
+  <summary>作付け状況</summary>
+  <div class="section-content">
+    <table><thead><tr><th>小屋</th><th>面積 (ha)</th><th>割合</th><th>状態</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
+</details>`;
+
+  } else { // done
+    const uArea = selectedArea();
+    const optArea = state.cells.filter(c=>state.optimalIds.has(c.siteId)).reduce((s,c)=>s+c.area,0);
+    const totalArea = W * H;
+    const isCorrect = Math.abs(uArea - optArea) < 0.5;
+    let rows = state.cells.map(c => {
+      const id = c.siteId;
+      const inU = state.selectedIds.has(id), inO = state.optimalIds.has(id);
+      const label = (inU && inO) ? '✅ 正解'
+                  : inU ? '△ あなたのみ'
+                  : inO ? '★ 最適（見逃し）'
+                  : '－';
+      const bg = (inU && inO) ? 'background:#e8f5e9'
+               : inO ? 'background:#e3f2fd'
+               : inU ? 'background:#fffde7' : '';
+      return `<tr style="${bg}"><td>${id+1}</td><td>${ha(c.area)}</td><td>${pct(c.area)}%</td><td>${label}</td></tr>`;
+    }).join('');
+    info.innerHTML = `
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#66BB6A"></div>正解の作付け</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#90CAF9"></div>最適（見逃した区画）</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#FFF176"></div>あなたのみ（非最適）</div>
+</div>
+<details open>
+  <summary>収穫結果の比較</summary>
+  <div class="section-content">
+    <p style="margin-bottom:8px">
+      あなたの作付け面積: <strong>${ha(uArea)} ha</strong>（${pct(uArea)}%）
+      最大収穫面積: <strong>${ha(optArea)} ha</strong>（${pct(optArea)}%）
+      ${isCorrect
+        ? '<span style="color:#1b5e20;font-weight:bold">🌾 完璧な計画！</span>'
+        : `<span style="color:#bf360c">精度 ${(uArea/optArea*100).toFixed(1)}%</span>`}
+    </p>
+    <table><thead><tr><th>小屋</th><th>面積 (ha)</th><th>割合</th><th>判定</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+  </div>
+</details>`;
+  }
+}
+
+// ─── イベント ─────────────────────────────────────────────
+const warning = document.getElementById('warning');
+
+function updatePlacingStatus() {
+  document.getElementById('status-placing').textContent =
+    `管理小屋 ${state.sites.length} / ${MAX_PTS} か所`;
+  document.getElementById('btn-random').disabled = state.sites.length >= MAX_PTS;
+  document.getElementById('btn-finish-placing').disabled = state.sites.length < 1;
+}
+
+function updateSelStatus() {
+  const area = selectedArea();
+  document.getElementById('status-selecting').textContent =
+    `作付け面積: ${ha(area)} ha (${pct(area)}%)`;
+}
+
+function addSite(x, y) {
+  if (state.sites.length >= MAX_PTS) {
+    warning.textContent = `管理小屋は最大 ${MAX_PTS} か所です。`;
+    return false;
+  }
+  for (const s of state.sites) {
+    if (Math.sqrt(dist2(s, {x, y})) < 8) {
+      warning.textContent = '既存の管理小屋に近すぎます。';
+      return false;
+    }
+  }
+  warning.textContent = '';
+  state.sites.push({ x, y, id: state.sites.length });
+  return true;
+}
+
+canvas.addEventListener('click', e => {
+  const rc = canvas.getBoundingClientRect();
+  const x = (e.clientX - rc.left) * (W / rc.width);
+  const y = (e.clientY - rc.top)  * (H / rc.height);
+  if (x < 0 || x > W || y < 0 || y > H) return;
+
+  if (state.phase === 'placing') {
+    if (addSite(x, y)) { updatePlacingStatus(); rebuild(); }
+  } else if (state.phase === 'selecting') {
+    const site = hitTest(x, y);
+    if (!site) return;
+    toggleCell(site.id);
+    updateSelStatus();
+    render();
+    updateInfoPanel();
+  }
+});
+
+document.getElementById('btn-random').addEventListener('click', () => {
+  const n = Math.min(
+    parseInt(document.getElementById('rand-count').value, 10) || 10,
+    MAX_PTS - state.sites.length
+  );
+  let added = 0, tries = 0;
+  while (added < n && tries++ < 3000)
+    if (addSite(20 + Math.random()*(W-40), 20 + Math.random()*(H-40))) added++;
+  if (added > 0) { warning.textContent = ''; updatePlacingStatus(); rebuild(); }
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  state.sites = [];
+  warning.textContent = '';
+  updatePlacingStatus();
+  rebuild();
+});
+
+document.getElementById('btn-finish-placing').addEventListener('click', () => {
+  if (state.sites.length < 1) return;
+  enterSelectingPhase();
+});
+
+document.getElementById('btn-back').addEventListener('click', () => {
+  state.phase = 'placing';
+  document.getElementById('result-banner').style.display = 'none';
+  showToolbar('placing');
+  canvas.style.cursor = 'crosshair';
+  updatePlacingStatus();
+  render();
+  updateInfoPanel();
+});
+
+document.getElementById('btn-reset-sel').addEventListener('click', () => {
+  state.selectedIds = new Set();
+  state.blockedIds = new Set();
+  updateSelStatus();
+  render();
+  updateInfoPanel();
+});
+
+document.getElementById('btn-finish-sel').addEventListener('click', enterDonePhase);
+document.getElementById('btn-restart').addEventListener('click', enterPlacingPhase);
+
+render();
+</script>
+<footer style="margin-top:14px;font-size:12px;color:#8a7a60;text-align:center;">
+  © 2026 suna127. All Rights Reserved.
+</footer>
+</body>
+</html>
