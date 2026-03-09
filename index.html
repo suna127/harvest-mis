@@ -73,10 +73,10 @@
   <summary>ゲームの説明を見る</summary>
   <p>
     あなたは農場経営者です。広大な農地に<strong>管理小屋</strong>を配置すると、
-    各小屋が担当する<strong>農地区画</strong>が決まります（ボロノイ図）。<br>
+    各小屋が担当する<strong>農地区画</strong>が決まります。<br>
+    作付けをする小屋を選んで、今年の<strong>収穫面積（作付け区画の合計面積）を最大化</strong>する計画を立てましょう！<br>
     ただし<strong>隣接する区画は同じ水路を共有</strong>しているため、
     両方を同時に作付けすることができません。<br>
-    今年の<strong>収穫面積（作付け区画の合計面積）を最大化</strong>する計画を立てましょう！<br>
     <span style="color:#888">※ 農地全体は 8km × 5km = 4,000 ha。管理小屋は最大40か所まで配置できます。</span>
   </p>
 </details>
@@ -113,9 +113,8 @@
 <script>
 const W = 800, H = 500, MAX_PTS = 40;
 
-// ─── ハイスコア（localStorage永続化） ────────────────────
-const HS_KEY = 'farmgame_highscore';
-let highScore = parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+// ─── ハイスコア（セッション中のみ保持） ────────────────────
+let highScore = 0;
 
 function renderHighScore(newRecord) {
   const val = document.getElementById('hs-value');
@@ -377,7 +376,6 @@ function enterDonePhase() {
   let newRecord = false;
   if (isCorrect && state.sites.length > highScore) {
     highScore = state.sites.length;
-    localStorage.setItem(HS_KEY, highScore);
     newRecord = true;
   }
   renderHighScore(newRecord);
